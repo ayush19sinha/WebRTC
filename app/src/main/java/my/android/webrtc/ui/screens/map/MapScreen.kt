@@ -1,4 +1,4 @@
-package my.android.webrtc.ui.screens
+package my.android.webrtc.ui.screens.map
 
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,17 +46,19 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import my.android.webrtc.R
+import my.android.webrtc.ui.screens.components.LocationBottomSheet
 import my.android.webrtc.ui.screens.components.MapScreenTopBar
 import my.android.webrtc.ui.theme.PrimaryColor
 import my.android.webrtc.ui.viewmodel.MapViewModel
 import my.android.webrtc.ui.viewmodel.ResponseState
 
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     mapViewModel: MapViewModel,
-    modifier: Modifier = Modifier
-) {
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+    ) {
     val context = LocalContext.current
     val address by mapViewModel.markerAddressDetail.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
@@ -67,11 +71,11 @@ fun MapScreen(
     var addressLine by remember { mutableStateOf<String?>(null) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    val initialPosition = LatLng(23.344, 85.296)
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialPosition, 16f)
+        position = CameraPosition.fromLatLngZoom(currentLocation ?: LatLng(23.344, 85.296), 16f)
     }
 
+    val sheetState = rememberModalBottomSheetState()
     val mapLocation by mapViewModel.mapLocation.collectAsStateWithLifecycle()
 
     fun animateCameraToLocation(location: LatLng) {
@@ -104,10 +108,14 @@ fun MapScreen(
             fusedLocationClient = fusedLocationClient,
             permissionLauncher = permissionLauncher,
             onLocationReceived = { location ->
-                location?.let { animateCameraToLocation(it) }
+                location?.let {
+                    currentLocation = it
+                    animateCameraToLocation(it)
+                }
             },
             onPermissionDenied = {
-                Toast.makeText(context, "Location permission is required to access your location", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Location permission is required to access your location",
+                    Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -120,12 +128,18 @@ fun MapScreen(
         }
     }
 
+    LaunchedEffect(currentLocation) {
+        currentLocation?.let {
+            markerPosition = it
+        }
+    }
+
     Scaffold(
-        topBar = { MapScreenTopBar(context = context, onError = {error ->
+        topBar = { MapScreenTopBar(context = context, onError = { error ->
             coroutineScope.launch {
                 snackbarHostState.showSnackbar(error)
-            }}, onPlaceSelected = {latLng ->
-            mapViewModel.updateMapLocation(latLng)}) },
+            }}, onPlaceSelected = { latLng ->
+            mapViewModel.updateMapLocation(latLng) }) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
@@ -137,14 +151,16 @@ fun MapScreen(
                             location?.let { animateCameraToLocation(it) }
                         },
                         onPermissionDenied = {
-                            Toast.makeText(context, "Location permission is required to access your location", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Location permission is required to access your location",
+                                Toast.LENGTH_SHORT).show()
                         }
                     )
                 },
                 containerColor = Color.White,
                 contentColor = PrimaryColor
             ) {
-                Icon(painter = painterResource(id = R.drawable.ic_crosshair), contentDescription = "Get current location", Modifier.size(24.dp))
+                Icon(painter = painterResource(id = R.drawable.ic_crosshair),
+                    contentDescription = "Get current location", Modifier.size(24.dp))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -164,14 +180,14 @@ fun MapScreen(
                     }
                 }
             ) {
-                markerPosition?.let { MarkerState(position = it) }?.let {
+                markerPosition?.let { position ->
                     val originalBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.ic_map_marker)
                     val markerSize = 60.dpToPx(context).toInt()
                     val scaledBitmap = originalBitmap.scale(markerSize, markerSize)
                     val descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap)
 
                     Marker(
-                        state = it,
+                        state = MarkerState(position = position),
                         icon = descriptor,
                         alpha = 1.0f,
                         zIndex = 1.0f
@@ -195,8 +211,26 @@ fun MapScreen(
             }
         }
     }
+
+    if (showBottomSheet) {
+        LocationBottomSheet(
+            sheetState = sheetState,
+            location = addressLine ?: "Address not available",
+            onSave = {
+                onConfirm()
+                coroutineScope.launch { sheetState.hide() }.invokeOnCompletion {
+                    if (!sheetState.isVisible) showBottomSheet = false
+                }
+            },
+            onDismiss = {
+                coroutineScope.launch { sheetState.hide() }.invokeOnCompletion {
+                    if (!sheetState.isVisible) showBottomSheet = false
+                }
+            }
+        )
+    }
 }
 
-private fun Int.dpToPx(context: Context): Float {
+fun Int.dpToPx(context: Context): Float {
     return this * context.resources.displayMetrics.density
 }

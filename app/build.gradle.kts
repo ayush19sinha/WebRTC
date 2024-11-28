@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
+    alias(libs.plugins.google.gms.google.services)
 
 }
 
@@ -62,7 +63,7 @@ dependencies {
     implementation(libs.play.services.location)
 
     // google places
-    implementation ("com.google.android.libraries.places:places:3.3.0")
+    implementation (libs.places)
 
     //navigation
     implementation(libs.androidx.navigation.compose)
@@ -75,6 +76,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
